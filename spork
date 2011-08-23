@@ -2,13 +2,9 @@
 use warnings;
 use strict;
 use Getopt::Long qw(:config bundling);
+use Switch;
 
-#params:
-# -f --file <filename>: file containing the list of servers
-# -t --threaded #: 		whether to go threaded, and optionally how many threads
-# -u --user <username>: username to use if not same as current user
-
-my $username=getlogin;
+my $username=getlogin || getpwuid($<);
 my $threaded=0;
 my $filename="";
 my $debug	=0;
@@ -20,9 +16,11 @@ GetOptions (
 	'filename|f=s'	=> \$filename,
 	'debug|d:1'		=> \$debug,
 	'notinteractive|n'=> \$notint,
+	'help|h'		=> \&usage,
 	);
 
 my $command=shift || usage();
+
 #check for passed values - which will be used as a list of machine names in lieu of the filename arg
 my @lines=();
 if(!-t STDIN){@lines=<>;}
@@ -33,31 +31,36 @@ if(!@lines)
 	@lines=<F>;
 	close(F)
 		or die("Couldn't close filehandle for $filename: $!\n");
-	chomp(@lines);
 }
-@lines=map{$a=$_;$a=~s/\s+//g;$a if $a}@lines; #no whitespace in name, and no empty lines
+if(!@lines){warn "No machine names found\n";usage();}
+
+#get rid of newlines, empty lines, and whitespace in lines
+chomp(@lines);
+@lines=map{$a=$_;$a=~s/\s+//g;$a}@lines;
+my @tmp=();foreach my $l(@lines){push(@tmp,$l) if $l;}
+@lines=@tmp;
+
 print "username=$username, threaded=$threaded, filename=$filename, command=$command\n" if $debug;
 print "Host list:".join(",",@lines)."\n" if $debug;
-if($threaded)
+
+#get the difference between the longest and shortest one (for pretty formatting)
+my $longest=(sort(map {length($_)}@lines))[-1];
+
+#decide how to run, threaded or not, and how many
+switch($threaded)
 {
-		use Threadeach;
-		if($threaded == -1)
-		{
-			Threadeach::threadall(\&runcmd_not_int,@lines);
-		}
-		elsif($threaded > 1) #means they've specified the number of threads
-		{
-			Threadeach::threadsome(\&runcmd_not_int,$threaded,@lines);
-		}
-		else
-		{
-			Threadeach::threadeach(\&runcmd_not_int,@lines);
-		}
+	case -1 			{eval"use Threadeach;Threadeach::threadall(\&runcmd_not_int,@lines);" or run_looped(1)}	#infinite threads
+	case 1				{eval"use Threadeach;Threadeach::threadeach(\&runcmd_not_int,@lines);" or run_looped(1)}	#default threads
+	case {$threaded>0}	{eval"use Threadeach;Threadeach::threadsome(\&runcmd_not_int,$threaded,@lines);" or run_looped(1)} #specified # of threads
+	else	{run_looped()}
 }
-else
+
+sub run_looped
 {
-	foreach my $line(@lines)
-	{
+	my $iserr=shift ||0;
+	warn "Running in serial because of no threadeach library\n" if $iserr;
+	 foreach my $line(@lines)
+	 {
 		if($notint){&runcmd_not_int($line,$command);}
 		else{&runcmd_int($line,$command);}
 	}
@@ -65,22 +68,24 @@ else
 
 sub runcmd_int
 {
-	my $host=shift || die "No host passed to runcmd_int\n";
-	#what's the best way to run here?
-	print "$host: ";
-	system("ssh $username\@$host \"$command\"");
+	my $host=shift || return;
+	my $pad=" "x ($longest-length($host));
+	my $cmd="ssh $username\@$host \"$command\"";
+	print $cmd if $debug;
+	system($cmd);
 }
 #if it's not interactive, we can make the output nicer.  :)
 sub runcmd_not_int
 {
-	my $host=shift || die ("Error no host passed to sub runcmd_not_int!\n");
+	my $host=shift || return;
 	open(CMD,"ssh $username\@$host \"$command\" |")
 		or die("Couldn't open command: $!");
+	my $pad=" "x ($longest-length($host));
 	while(<CMD>)
 	{
 		my $ret=$_;
 		chomp($ret);
-		print "$host: $ret\n";
+		print "$host:$pad$ret\n";
 	}
 }
 
@@ -95,8 +100,10 @@ Options:
 Example:
   $0 -d -t 8 -u root -f myhostsfile "uptime"
     will go to all the hosts listed in myhostsfile and run the "uptime" command with max 8 parallel threads
-  grep nameserver /etc/resolv.conf | awk '{print $2}' | $0 'host google.com'
+  grep nameserver /etc/resolv.conf | awk '{print \$2}' | $0 'host google.com'
     will go to all the nameservers in resolv.conf one at a time and run 'host google.com' on them
+  ./$0 -f hostlist -t-1 -uroot uptime
+    will go to all machines in "hostlist" and run "uptime" with as many parallel threads as there are hosts
 cEND
 
 exit();

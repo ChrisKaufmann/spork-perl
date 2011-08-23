@@ -1,8 +1,15 @@
 Small utility for batching tasks for execution on remote machines.
 Perl version
 
-usage: spork [-t] [-f <filename>] [-u user] "remote command"
-or: echo stdin: echo pclist | spork "remote command"
+usage: spork [-h|--help] [-d|--debug] [-t|--threaded [# or -1]] [-f|--filename <filename>] [-u|--username user] [-n|--notinteractive] "remote command"
 
 Defaults to running as same user on remote systems as is run as.
--t will run threaded, with the optional param the number of threads, or * to thread all
+-t will run threaded, with the optional param the number of threads, or -1 to thread all
+
+Example:
+	./spork -d -t 8 -u root -f myhostsfile "uptime"
+    	will go to all the hosts listed in myhostsfile and run the "uptime" command with max 8 parallel threads
+	grep nameserver /etc/resolv.conf | awk '{print $2}' | ./spork 'host google.com'
+		will go to all the nameservers in resolv.conf one at a time and run 'host google.com' on them
+	././spork -f hostlist -t-1 -uroot uptime
+		will go to all machines in "hostlist" and run "uptime" with as many parallel threads as there are hosts
