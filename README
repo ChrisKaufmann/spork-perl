@@ -13,3 +13,6 @@ Example:
 		will go to all the nameservers in resolv.conf one at a time and run 'host google.com' on them
 	././spork -f hostlist -t-1 -uroot uptime
 		will go to all machines in "hostlist" and run "uptime" with as many parallel threads as there are hosts
+
+Download:
+ bash < <(curl -s https://raw.github.com/ChrisKaufmann/spork-perl/master/getspork)
