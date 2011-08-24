@@ -78,7 +78,7 @@ sub runcmd_int
 sub runcmd_not_int
 {
 	my $host=shift || return;
-	open(CMD,"ssh $username\@$host \"$command\" |")
+	open(CMD,"ssh $username\@$host \"$command\" 2>&1 |")
 		or die("Couldn't open command: $!");
 	my $pad=" "x ($longest-length($host));
 	while(<CMD>)
